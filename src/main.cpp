@@ -1,22 +1,9 @@
 /*
  *  Spresense LTE with DFRobot Environmental Sensor
  *
+ *  send env sensor, gnss and voltage data to MQTT broker via LTE network.
  *
- *  This library is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU Lesser General Public
- *  License as published by the Free Software Foundation; either
- *  version 2.1 of the License, or (at your option) any later version.
- *
- *  This library is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  Lesser General Public License for more details.
- *
- *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- *  This example publishes the location acquired with GNSS to the broker using MQTT.
+ *  Under GPL v3
  */
 
 // libraries
@@ -64,6 +51,7 @@
 #define BROKER_NAME "iot.env.cs.i.nagoya-u.ac.jp" // MQTT broker hostname
 
 #define BROKER_PORT 9500               // port 8883 is the default for MQTT over TLS.
+
 #define ROOTCA_FILE "certs/chain.pem"   // Define the path to a file containing CA
                                        // certificates that are trusted.
 #define CERT_FILE   "certs/cert.pem" // Define the path to a file containing certificate
@@ -85,24 +73,25 @@
 
 // MQTT client username and password
 const char clientID[40] = "spresense_lte";
-const char *mqttUsername = "namazu";
+const char *mqttUsername = "********";
 const char *mqttPassword = "********";
 
-// network related objects
-LTE lteAccess;
-LTETLSClient client;
-MqttClient mqttClient(client);
-SDClass theSD;
-SpGnss Gnss;
-
-LTEModemStatus modemStatus;
-
+// MQTT settings
 unsigned long lastPubSec = 0;
 char broker[] = BROKER_NAME;
 int port = BROKER_PORT;
 char topic[]  = MQTT_TOPIC;
 char topic2[] = MQTT_TOPIC2;
 char topic3[] = MQTT_TOPIC3;
+
+// network related objects
+LTE lteAccess;
+LTETLSClient client;
+MqttClient mqttClient(client);
+LTEModemStatus modemStatus;
+
+SDClass theSD;
+SpGnss Gnss;
 
 // battery voltage (mV)
 int mvolt = 0;
@@ -396,38 +385,6 @@ void setup()
 
 void loop()
 {
-  #if 0
-  /* Check update. */
-  if (Gnss.waitUpdate(-1)) {
-    /* Get navData. */
-    SpNavData navData;
-    Gnss.getNavData(&navData);
-
-    bool posFix = ((navData.posDataExist) && (navData.posFixMode != FixInvalid));
-    if (posFix) {
-      Serial.println("Position is fixed.");
-      String nmeaString = getNmeaGga(&navData);
-      if (strlen(nmeaString.c_str()) != 0) {
-        unsigned long currentTime = lteAccess.getTime();
-        if (currentTime >= lastPubSec + PUBLISH_INTERVAL_SEC) {
-          if (!mqttClient.connected()) {
-            // reconnect to the MQTT broker
-            connectMqttBroker(broker, port);
-          }
-
-          // Publish to broker
-          if (mqttPublish(topic, nmeaString) == RET_SUCCESS) {
-            lastPubSec = currentTime;
-            numOfPubs++;
-          }
-        }
-      }
-    } else {
-      Serial.println("Position is not fixed.");
-    }
-  }
-  #endif
-
   /* Get navData. */
   SpNavData navData;
   Gnss.getNavData(&navData);
@@ -511,26 +468,30 @@ void loop()
       delay(10);
     }
 
-    mqttClient.stop();
-
-    // disconnect LTE network
-    lteAccess.shutdown();
-
     delay(SENSING_RATE * 1000);
-
-    // reconnect to LTE network
-    doAttach();
-    sleep(1);
-
-    if (LTE_ERROR == modemStatus) {
-      doAttach();
-      sleep(1);
-    }
-    modemStatus = lteAccess.getStatus();
-    Serial.println(modemStatus);
   }
-  // connect to the MQTT broker
-  connectMqttBroker(broker, port);
+
+  // 切断対策 ========================================
+
+  // Wait for the modem to connect to the LTE network.
+  Serial.println("Waiting for successful attach.");
+  modemStatus = lteAccess.getStatus();
+
+  while(LTE_READY != modemStatus) {
+    if (LTE_ERROR == modemStatus) {
+
+      /* If the following logs occur frequently, one of the following might be a cause:
+       * - Reject from LTE network
+       */
+      Serial.println("An error has occurred. Shutdown and retry the network attach process after 1 second.");
+      lteAccess.shutdown();
+      sleep(1);
+      doAttach();
+    }
+    sleep(1);
+    modemStatus = lteAccess.getStatus();
+  }
+  Serial.println("attach succeeded.");
 }
 
 void printData() {
