@@ -50,7 +50,7 @@
 // MQTT broker
 #define BROKER_NAME "iot.env.cs.i.nagoya-u.ac.jp" // MQTT broker hostname
 
-#define BROKER_PORT 9500               // port 8883 is the default for MQTT over TLS.
+#define BROKER_PORT 8883               // port 8883 is the default for MQTT over TLS.
 
 #define ROOTCA_FILE "certs/chain.pem"   // Define the path to a file containing CA
                                        // certificates that are trusted.
